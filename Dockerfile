@@ -38,11 +38,13 @@ WORKDIR /app
 COPY --from=build /app/node_modules             ./node_modules
 COPY --from=build /app/packages                 ./packages
 COPY --from=build /app/apps/api/dist            ./apps/api/dist
+COPY --from=build /app/apps/api/node_modules    ./apps/api/node_modules
 COPY --from=build /app/apps/api/prisma          ./apps/api/prisma
 COPY --from=build /app/apps/api/package.json    ./apps/api/package.json
 
 ENV NODE_ENV=production
 EXPOSE 8080
 
-# Run migrations then start; Render injects DATABASE_URL at runtime
-CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/server.js"]
+# Run migrations then start; Render injects DATABASE_URL at runtime.
+# Use the bundled Prisma CLI so npx does not download a newer Node-incompatible version.
+CMD ["sh", "-c", "cd apps/api && ./node_modules/.bin/prisma migrate deploy --schema prisma/schema.prisma && node dist/server.js"]
