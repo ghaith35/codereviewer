@@ -49,6 +49,22 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
+  // If a previous enqueue crashed after creating the DB row but before BullMQ
+  // accepted the job, do not let that orphaned QUEUED row block the user.
+  await prisma.analysis.updateMany({
+    where: {
+      userId,
+      repositoryId,
+      status: "QUEUED",
+      jobId: null,
+    },
+    data: {
+      status: "FAILED",
+      errorMessage: "Analysis could not be queued. Please try again.",
+      completedAt: new Date(),
+    },
+  });
+
   const inProgress = await prisma.analysis.findFirst({
     where: {
       repositoryId,
@@ -69,11 +85,26 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     },
   });
 
-  const job = await analyzeQueue.add(
-    "analyze",
-    { analysisId: analysis.id, userId, repositoryId, branch: analysis.branch },
-    { jobId: `analysis:${analysis.id}` }
-  );
+  let job;
+  try {
+    job = await analyzeQueue.add(
+      "analyze",
+      { analysisId: analysis.id, userId, repositoryId, branch: analysis.branch },
+      { jobId: `analysis-${analysis.id}` }
+    );
+  } catch (err) {
+    await prisma.analysis.update({
+      where: { id: analysis.id },
+      data: {
+        status: "FAILED",
+        errorMessage: "Analysis could not be queued. Please try again.",
+        completedAt: new Date(),
+      },
+    });
+    console.error("[queue] failed to enqueue analysis", err);
+    res.status(503).json({ error: "queue_unavailable", message: "Analysis queue is temporarily unavailable" });
+    return;
+  }
 
   await prisma.analysis.update({ where: { id: analysis.id }, data: { jobId: job.id } });
   await prisma.user.update({ where: { id: userId }, data: { analysesUsedMtd: { increment: 1 } } });
