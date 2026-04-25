@@ -1,0 +1,209 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum AnalysisStatus {
+  QUEUED
+  FETCHING_FILES
+  RUNNING_STATIC
+  RUNNING_AI
+  GENERATING_REPORT
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum IssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum IssueCategory {
+  SECURITY
+  PERFORMANCE
+  QUALITY
+  BEST_PRACTICE
+  MAINTAINABILITY
+}
+
+enum IssueSource {
+  ESLINT
+  PYLINT
+  SEMGREP
+  GEMINI
+}
+
+model User {
+  id              String   @id @default(cuid())
+  githubId        Int      @unique
+  githubLogin     String
+  email           String?
+  avatarUrl       String?
+  name            String?
+
+  githubTokenEnc  String   @db.Text
+  githubTokenIv   String
+  githubTokenTag  String
+  githubScopes    String
+
+  plan            Plan     @default(FREE)
+  analysesUsedMtd Int      @default(0)
+  lastQuotaReset  DateTime @default(now())
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastLoginAt     DateTime @default(now())
+
+  repositories    Repository[]
+  analyses        Analysis[]
+  subscription    Subscription?
+
+  @@index([githubLogin])
+  @@index([plan])
+}
+
+model Repository {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  githubId      Int
+  fullName      String
+  name          String
+  description   String?  @db.Text
+  private       Boolean  @default(false)
+  defaultBranch String   @default("main")
+  language      String?
+  htmlUrl       String
+  starsCount    Int      @default(0)
+  pushedAt      DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  analyses      Analysis[]
+
+  @@unique([userId, githubId])
+  @@index([userId])
+  @@index([userId, pushedAt(sort: Desc)])
+}
+
+model Analysis {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repositoryId     String
+  repository       Repository     @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  commitSha        String?
+  branch           String         @default("main")
+  status           AnalysisStatus @default(QUEUED)
+  progress         Int            @default(0)
+
+  overallScore     Int?
+  securityScore    Int?
+  performanceScore Int?
+  qualityScore     Int?
+
+  filesAnalyzed    Int            @default(0)
+  issuesCritical   Int            @default(0)
+  issuesHigh       Int            @default(0)
+  issuesMedium     Int            @default(0)
+  issuesLow        Int            @default(0)
+  issuesInfo       Int            @default(0)
+
+  jobId            String?
+  errorMessage     String?        @db.Text
+  startedAt        DateTime?
+  completedAt      DateTime?
+  durationMs       Int?
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  issues           Issue[]
+  files            AnalysisFile[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([repositoryId, createdAt(sort: Desc)])
+  @@index([status])
+}
+
+model AnalysisFile {
+  id         String   @id @default(cuid())
+  analysisId String
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  path       String
+  language   String
+  sizeBytes  Int
+  linesOfCode Int
+  skipped    Boolean  @default(false)
+  skipReason String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([analysisId])
+  @@index([analysisId, skipped])
+}
+
+model Issue {
+  id             String        @id @default(cuid())
+  analysisId     String
+  analysis       Analysis      @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  filePath       String
+  lineStart      Int
+  lineEnd        Int?
+  columnStart    Int?
+
+  severity       IssueSeverity
+  category       IssueCategory
+  source         IssueSource
+  ruleId         String?
+
+  title          String
+  description    String        @db.Text
+  codeSnippet    String?       @db.Text
+  suggestion     String?       @db.Text
+  suggestionCode String?       @db.Text
+
+  metadata       Json?
+
+  createdAt      DateTime      @default(now())
+
+  @@index([analysisId])
+  @@index([analysisId, severity])
+  @@index([analysisId, category])
+  @@index([analysisId, filePath])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  status               String?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
