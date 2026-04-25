@@ -36,4 +36,7 @@ if (!_env.success) {
   process.exit(1);
 }
 
-export const env = _env.data;
+export const env = {
+  ..._env.data,
+  FRONTEND_URL: _env.data.FRONTEND_URL.replace(/\/+$/, ""),
+};
