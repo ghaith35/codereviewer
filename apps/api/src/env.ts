@@ -8,7 +8,8 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().url(),
 
   JWT_SECRET: z.string().min(32),
-  TOKEN_ENCRYPTION_KEY: z.string().length(44), // 32 bytes base64
+  ENCRYPTION_KEY: z.string().length(64).optional(), // 32 bytes hex
+  TOKEN_ENCRYPTION_KEY: z.string().length(44).optional(), // 32 bytes base64, legacy
 
   GITHUB_CLIENT_ID: z.string().min(1),
   GITHUB_CLIENT_SECRET: z.string().min(1),
@@ -17,6 +18,14 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.string().min(1),
 
   FRONTEND_URL: z.string().url(),
+}).superRefine((env, ctx) => {
+  if (!env.ENCRYPTION_KEY && !env.TOKEN_ENCRYPTION_KEY) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["ENCRYPTION_KEY"],
+      message: "Required",
+    });
+  }
 });
 
 const _env = EnvSchema.safeParse(process.env);

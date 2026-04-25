@@ -1,7 +1,9 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { env } from "../env.js";
 
-const KEY = Buffer.from(env.TOKEN_ENCRYPTION_KEY, "base64");
+const KEY = env.ENCRYPTION_KEY
+  ? Buffer.from(env.ENCRYPTION_KEY, "hex")
+  : Buffer.from(env.TOKEN_ENCRYPTION_KEY!, "base64");
 const ALGO = "aes-256-gcm";
 
 export function encryptToken(plaintext: string): {
