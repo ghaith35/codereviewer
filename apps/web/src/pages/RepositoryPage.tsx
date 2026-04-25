@@ -8,6 +8,50 @@ import type { RepoSummary, AnalysisSummary, StartAnalysisResponse } from "@cr/sh
 
 type RepoDetail = RepoSummary & { analyses: AnalysisSummary[] };
 
+const ACTIVE_STATUSES = new Set([
+  "QUEUED",
+  "FETCHING_FILES",
+  "RUNNING_STATIC",
+  "RUNNING_AI",
+  "GENERATING_REPORT",
+]);
+
+const STAGE_LABELS: Record<string, string> = {
+  QUEUED: "Queued",
+  FETCHING_FILES: "Fetching files",
+  RUNNING_STATIC: "Running static checks",
+  RUNNING_AI: "AI review",
+  GENERATING_REPORT: "Generating report",
+  COMPLETED: "Completed",
+  FAILED: "Failed",
+  CANCELLED: "Cancelled",
+};
+
+const STAGE_MIN_PROGRESS: Record<string, number> = {
+  QUEUED: 5,
+  FETCHING_FILES: 18,
+  RUNNING_STATIC: 42,
+  RUNNING_AI: 70,
+  GENERATING_REPORT: 92,
+};
+
+const PROGRESS_STAGES = [
+  "QUEUED",
+  "FETCHING_FILES",
+  "RUNNING_STATIC",
+  "RUNNING_AI",
+  "GENERATING_REPORT",
+] as const;
+
+function isActiveAnalysis(status: string) {
+  return ACTIVE_STATUSES.has(status);
+}
+
+function displayProgress(analysis: AnalysisSummary) {
+  if (analysis.status === "COMPLETED") return 100;
+  return Math.max(analysis.progress ?? 0, STAGE_MIN_PROGRESS[analysis.status] ?? 0);
+}
+
 function statusBadge(status: string) {
   const map: Record<string, string> = {
     COMPLETED: "bg-emerald-950 text-emerald-400",
@@ -37,6 +81,11 @@ export function RepositoryPage() {
     queryKey: ["repo", id],
     queryFn: () => api.get<RepoDetail>(`/repos/${id}`),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const data = query.state.data as RepoDetail | undefined;
+      return data?.analyses.some((a) => isActiveAnalysis(a.status)) ? 2_000 : false;
+    },
+    refetchIntervalInBackground: true,
   });
 
   const startMutation = useMutation<StartAnalysisResponse, Error, { repositoryId: string }>({
@@ -59,9 +108,12 @@ export function RepositoryPage() {
     );
   }
 
-  const hasInProgress = repo.analyses.some((a) =>
-    ["QUEUED", "FETCHING_FILES", "RUNNING_STATIC", "RUNNING_AI", "GENERATING_REPORT"].includes(a.status)
-  );
+  const activeAnalysis = repo.analyses.find((a) => isActiveAnalysis(a.status));
+  const hasInProgress = activeAnalysis != null;
+  const activeProgress = activeAnalysis ? displayProgress(activeAnalysis) : 0;
+  const activeStageIndex = activeAnalysis
+    ? Math.max(0, PROGRESS_STAGES.findIndex((stage) => stage === activeAnalysis.status))
+    : -1;
 
   return (
     <div className="min-h-screen p-8">
@@ -130,6 +182,63 @@ export function RepositoryPage() {
               {startError}
             </div>
           )}
+
+          {activeAnalysis && (
+            <div className="mt-6 border-t border-zinc-800 pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    {STAGE_LABELS[activeAnalysis.status] ?? activeAnalysis.status}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Analysis is running. This page refreshes automatically.
+                  </p>
+                </div>
+                <Link
+                  to={`/analyses/${activeAnalysis.id}`}
+                  className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700"
+                >
+                  View details
+                </Link>
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
+                  <span>{activeProgress}% complete</span>
+                  <span>{STAGE_LABELS[activeAnalysis.status] ?? activeAnalysis.status}</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-violet-500 transition-all duration-700"
+                    style={{ width: `${activeProgress}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-5 gap-2">
+                {PROGRESS_STAGES.map((stage, index) => {
+                  const isDone = index < activeStageIndex;
+                  const isCurrent = index === activeStageIndex;
+                  return (
+                    <div key={stage} className="min-w-0">
+                      <div
+                        className={`h-1.5 rounded-full ${
+                          isDone || isCurrent ? "bg-emerald-500" : "bg-zinc-800"
+                        }`}
+                      />
+                      <p
+                        className={`mt-1 truncate text-[10px] ${
+                          isCurrent ? "text-emerald-300" : isDone ? "text-zinc-300" : "text-zinc-600"
+                        }`}
+                      >
+                        {STAGE_LABELS[stage]}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Analysis history */}
@@ -168,11 +277,17 @@ export function RepositoryPage() {
                     </div>
                   )}
                   {a.status !== "COMPLETED" && a.status !== "FAILED" && (
-                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-zinc-800">
-                      <div
-                        className="h-full rounded-full bg-emerald-500"
-                        style={{ width: `${a.progress}%` }}
-                      />
+                    <div className="w-48 sm:w-64">
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>{STAGE_LABELS[a.status] ?? a.status}</span>
+                        <span>{displayProgress(a)}%</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-violet-500 transition-all duration-700"
+                          style={{ width: `${displayProgress(a)}%` }}
+                        />
+                      </div>
                     </div>
                   )}
                 </Link>
