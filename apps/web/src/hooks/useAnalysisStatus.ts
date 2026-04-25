@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API_ORIGIN } from "../lib/api.js";
 
 export function useAnalysisStatus(analysisId: string | null) {
   const [status, setStatus] = useState<string>("QUEUED");
@@ -10,7 +11,7 @@ export function useAnalysisStatus(analysisId: string | null) {
   useEffect(() => {
     if (!analysisId) return;
 
-    const url = `${import.meta.env.VITE_API_URL ?? ""}/api/analyses/${analysisId}/status`;
+    const url = `${API_ORIGIN}/api/analyses/${analysisId}/status`;
     const es = new EventSource(url, { withCredentials: true });
 
     es.addEventListener("status", (e) => {

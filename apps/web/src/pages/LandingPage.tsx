@@ -1,4 +1,5 @@
 import { Github } from "lucide-react";
+import { API_ORIGIN } from "../lib/api.js";
 
 export function LandingPage() {
   return (
@@ -13,7 +14,7 @@ export function LandingPage() {
       </div>
 
       <a
-        href="/api/auth/github"
+        href={`${API_ORIGIN}/api/auth/github`}
         className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
       >
         <Github className="h-4 w-4" />

@@ -1,6 +1,7 @@
 import type { ApiError } from "@cr/shared";
 
-const BASE = "/api";
+export const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const BASE = `${API_ORIGIN}/api`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
