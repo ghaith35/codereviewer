@@ -11,30 +11,27 @@ import { calculateScores } from "../services/score.js";
 import type { AnalyzeJobData, AnalyzeJobResult } from "@cr/shared";
 import type { AnalysisStatus } from "@prisma/client";
 
-export const analyzeWorker = new Worker<AnalyzeJobData | Record<string, never>, AnalyzeJobResult | void>(
-  "analyze",
-  async (job) => {
-    if (job.name === "monthly-quota-reset") return handleQuotaReset();
-    return processAnalysis(job as Job<AnalyzeJobData>);
-  },
-  {
-    connection: redis,
-    concurrency: 2,
-    lockDuration: 300_000,
-    stalledInterval: 30_000,
-  }
-);
+let analyzeWorker: Worker<AnalyzeJobData | Record<string, never>, AnalyzeJobResult | void> | null = null;
 
-analyzeWorker.on("failed", async (job, err) => {
+async function handleFailedJob(
+  job: Job<AnalyzeJobData | Record<string, never>, AnalyzeJobResult | void> | undefined,
+  err: Error
+) {
   if (!job) return;
+  const analysisId = (job.data as Partial<AnalyzeJobData>).analysisId;
+  if (!analysisId) {
+    console.error(`[worker] ${job.name} failed`, err);
+    return;
+  }
+
   await prisma.analysis
     .update({
-      where: { id: job.data.analysisId },
+      where: { id: analysisId },
       data: { status: "FAILED", errorMessage: err.message, completedAt: new Date() },
     })
     .catch(() => {});
-  await pushStatus(job.data.analysisId, "error", { message: err.message });
-});
+  await pushStatus(analysisId, "error", { message: err.message });
+}
 
 async function processAnalysis(job: Job<AnalyzeJobData>): Promise<AnalyzeJobResult> {
   const { analysisId, userId, repositoryId, branch } = job.data;
@@ -199,6 +196,27 @@ async function pushStatus(analysisId: string, event: string, data: unknown) {
 }
 
 export function startWorker() {
+  if (analyzeWorker) return analyzeWorker;
+
+  analyzeWorker = new Worker<AnalyzeJobData | Record<string, never>, AnalyzeJobResult | void>(
+    "analyze",
+    async (job) => {
+      if (job.name === "monthly-quota-reset") return handleQuotaReset();
+      return processAnalysis(job as Job<AnalyzeJobData>);
+    },
+    {
+      connection: redis,
+      concurrency: 2,
+      lockDuration: 300_000,
+      stalledInterval: 30_000,
+    }
+  );
+
+  analyzeWorker.on("failed", handleFailedJob);
+  analyzeWorker.on("error", (err) => {
+    console.error("[worker] error", err);
+  });
+
   console.log("[worker] analyze ready");
   return analyzeWorker;
 }

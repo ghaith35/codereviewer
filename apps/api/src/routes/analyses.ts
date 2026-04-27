@@ -34,7 +34,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
 
   const quota = canStartAnalysis(user);
   if (!quota.ok) {
-    res.status(402).json({ error: "quota_exceeded", message: "Free plan limited to 3 analyses/month" });
+    res.status(402).json({ error: "quota_exceeded", message: "Analysis quota exceeded" });
     return;
   }
 

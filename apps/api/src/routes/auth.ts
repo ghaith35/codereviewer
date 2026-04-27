@@ -166,7 +166,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
     avatarUrl: user.avatarUrl,
     plan: user.plan,
     analysesUsedMtd: user.analysesUsedMtd,
-    analysesQuota: user.plan === "FREE" ? 3 : -1,
+    analysesQuota: -1,
   };
 
   res.json(body);

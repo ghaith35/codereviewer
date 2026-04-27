@@ -1,4 +1,4 @@
-import { Queue, QueueEvents } from "bullmq";
+import { Queue } from "bullmq";
 import { redis } from "../lib/redis.js";
 import type { AnalyzeJobData, AnalyzeJobResult } from "@cr/shared";
 
@@ -12,7 +12,9 @@ export const analyzeQueue = new Queue<AnalyzeJobData, AnalyzeJobResult>("analyze
   },
 });
 
-export const analyzeEvents = new QueueEvents("analyze", { connection: redis });
+analyzeQueue.on("error", (err) => {
+  console.error("[queue] error", err);
+});
 
 // Schedule the monthly quota reset on the 1st of every month at midnight UTC.
 // Idempotent: BullMQ deduplicates by jobId so calling this on every boot is safe.

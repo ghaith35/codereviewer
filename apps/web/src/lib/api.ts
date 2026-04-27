@@ -4,13 +4,15 @@ export const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, ""
 const BASE = `${API_ORIGIN}/api`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
 
   if (!res.ok) {

@@ -1,16 +1,23 @@
 import { Redis } from "ioredis";
 import { env } from "../env.js";
 
-const makeRedis = () =>
-  new Redis(env.REDIS_URL, {
+const makeRedis = (name: string) => {
+  const client = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     lazyConnect: true,
   });
 
-export const redis = makeRedis();      // general purpose + BullMQ jobs
-export const redisPub = makeRedis();   // SSE publish
-export const redisSub = makeRedis();   // SSE subscribe (separate connection required)
+  client.on("error", (err) => {
+    console.error(`[redis:${name}] error`, err.message);
+  });
+
+  return client;
+};
+
+export const redis = makeRedis("main");      // general purpose + BullMQ jobs
+export const redisPub = makeRedis("pub");    // SSE publish
+export const redisSub = makeRedis("sub");    // SSE subscribe (separate connection required)
 
 async function ensureConnected(client: Redis) {
   if (client.status === "ready") return;
